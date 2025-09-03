@@ -1,39 +1,46 @@
-#include <pthread.h>
-#include <queue>
-#include <string>
-#include <iostream>
+#include "main.hpp"
 
-std::queue<std::string> queue;
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
-int queue_size = 10;
-pthread_t threads[10];
-
-
-void* receive(void* arg)
+message_queue::message_queue()
 {
-    while (true)
+    int pthr_mutex_ret = pthread_mutex_init(&mutex,nullptr);
+    if ( pthr_mutex_ret != 0)
     {
-        std::string local_msg;
-        std::cout << "Write a message" << std::endl;
-        std::getline(std::cin,local_msg);
-        pthread_mutex_lock(&mutex);
-        queue.push(local_msg);
-        pthread_cond_signal(&cond);
-        pthread_mutex_unlock(&mutex);
+        errno = pthr_mutex_ret;
+        perror(" mutex initilization failed");
+        throw std::runtime_error("");
     }
-    return nullptr;
+
+    int pthr_cond_ret = pthread_cond_init(&cond,nullptr);
+    if ( pthr_cond_ret != 0) 
+    {
+        errno = pthr_cond_ret;
+        perror(" condition initilization failed");
+        throw std::runtime_error("");
+    }
 }
 
-void* process(void* arg)
+message_queue::~message_queue()
 {
-    while (true)
+    int pthr_mutex_dest_ret = pthread_mutex_destroy(&mutex);
+    if (pthr_mutex_dest_ret != 0)
     {
-        pthread_cond_wait(&cond,&mutex);
-        std::string local_msg = queue.front();
-        std::cout << "Process done" << std::endl;
-        queue.pop();
-        pthread_mutex_unlock(&mutex);
+        errno = pthr_mutex_dest_ret;
+        perror("mutex destroying failed");
     }
-    return nullptr;
+
+    int pthr_cond_dest_ret = pthread_cond_destroy(&cond);
+    if ( pthr_cond_dest_ret != 0)
+    {
+        errno = pthr_cond_dest_ret;
+        perror("condition destroying failed");
+    }
+    
+}
+
+void message_queue::push(const std::string& msg)
+{
+    pthread_mutex_lock(&mutex);
+    queue.push(msg);
+    pthread_cond_signal(&cond);
+    pthread_mutex_unlock(&mutex);
 }
