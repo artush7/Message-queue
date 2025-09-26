@@ -1,8 +1,7 @@
 #include "main.hpp"
 
-bool message_queue::producer_done = false;
-
-message_queue::message_queue()
+std::queue<std::string> message_queue::queue;
+message_queue::message_queue() : queue_size(15), producers(nullptr), consumers(nullptr),  producers_size(0), consumers_size(0)
 {
 
     int pthr_mutex_ret = pthread_mutex_init(&mutex,nullptr);
@@ -34,6 +33,10 @@ message_queue::~message_queue()
 {
     join_thread();
     
+    pthread_mutex_destroy(&mutex);
+    pthread_cond_destroy(&full);
+    pthread_cond_destroy(&empty);
+
     int pthr_mutex_dest_ret = pthread_mutex_destroy(&mutex);
     if (pthr_mutex_dest_ret != 0)
     {
@@ -55,8 +58,15 @@ message_queue::~message_queue()
         perror("condition destroying failed");
     }
     
-    delete[] consumers;
-    delete[] producers;
+    if (consumers)
+    {
+        delete[] consumers;
+    }
+    if (producers)
+    {
+        delete[] producers;
+    }
+    
 }
 
 void message_queue::push(const std::string& msg)
@@ -90,31 +100,22 @@ std::string message_queue::pop()
 void* message_queue::producer_thread(void* arg)
 {
     message_queue* m_q = static_cast<message_queue*>(arg);
-    while(!producer_done)
-    {
-        int message_ID = rand();
-        std::string msg = "Message ID : " + std::to_string(message_ID) + " something";
-        m_q->push(msg);
-        std::cout << msg << std::endl;
-        sleep(1);
-    }
+    int message_ID = rand();
+    std::string msg = "Message ID : " + std::to_string(message_ID) + " something";
+    m_q->push(msg);
+    std::cout << msg << std::endl;
+    sleep(1);
+
     return nullptr;
 }
 
 void* message_queue::consumer_thread(void* arg)
 {
     message_queue* m_q = static_cast<message_queue*>(arg);
-    while (true)
+    while (!queue.empty())
     {
-        if (producer_done)
-        {
-            break;
-        }
-        else
-        {
-            std::string msg = m_q->pop();
-            std::cout << "Consumer got message : " << msg << std::endl;
-        }
+         std::string msg = m_q->pop();
+         std::cout << "Consumer got message : " << msg << std::endl;
 
 
         sleep(1);
@@ -150,13 +151,16 @@ void message_queue::join_thread()
         pthread_join(consumers[i],nullptr);
     }
 
-    pthread_mutex_lock(&mutex);
-    producer_done = true;
-    pthread_cond_broadcast(&empty);
-    pthread_mutex_unlock(&mutex);
-
     for(int i = 0; i < producers_size;++i)
     {
         pthread_join(producers[i],nullptr);
     }
+}
+
+size_t message_queue::size_queueu()
+{
+    pthread_mutex_lock(&mutex);
+    size_t s = queue.size();
+    pthread_mutex_unlock(&mutex);
+    return s;
 }
